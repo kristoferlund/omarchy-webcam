@@ -291,6 +291,7 @@ Panel {
               font.pixelSize: Style.font.caption
               font.bold: true
               font.letterSpacing: 0.8
+              textFormat: Text.PlainText
             }
           }
         }
@@ -308,6 +309,7 @@ Panel {
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.display
             opacity: root.connected ? 1.0 : 0.42
+            textFormat: Text.PlainText
           }
 
           Column {
@@ -327,6 +329,7 @@ Panel {
               font.pixelSize: Style.font.title
               font.bold: true
               elide: Text.ElideRight
+              textFormat: Text.PlainText
             }
 
             Text {
@@ -339,6 +342,7 @@ Panel {
               font.bold: true
               font.letterSpacing: 0.8
               elide: Text.ElideRight
+              textFormat: Text.PlainText
             }
           }
 
@@ -367,6 +371,7 @@ Panel {
             font.pixelSize: Style.font.caption
             font.bold: true
             font.letterSpacing: 0.8
+            textFormat: Text.PlainText
           }
 
           Dropdown {
@@ -413,6 +418,7 @@ Panel {
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
           }
 
           Text {
@@ -423,6 +429,7 @@ Panel {
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.body
             wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
           }
 
           Repeater {
@@ -483,6 +490,7 @@ Panel {
           font.pixelSize: Style.font.bodySmall
           horizontalAlignment: Text.AlignHCenter
           wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
         }
       }
     }
@@ -525,6 +533,7 @@ Panel {
     font.family: root.contentFontFamily
     font.pixelSize: Style.font.caption
     wrapMode: Text.WordWrap
+    textFormat: Text.PlainText
   }
 
   Component {
@@ -545,6 +554,7 @@ Panel {
           color: root.contentForeground
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.body
+          textFormat: Text.PlainText
         }
         Text {
           id: controlValue
@@ -556,6 +566,7 @@ Panel {
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.caption
           font.bold: true
+          textFormat: Text.PlainText
 
           MouseArea {
             id: resetValueArea
@@ -600,7 +611,7 @@ Panel {
       spacing: Style.space(4)
       opacity: Model.isBlocked(controlData) ? 0.42 : 1.0
       enabled: !Model.isBlocked(controlData)
-      Text { width: parent.width; text: controlData.label; color: root.contentForeground; font.family: root.contentFontFamily; font.pixelSize: Style.font.body }
+      Text { width: parent.width; text: controlData.label; color: root.contentForeground; font.family: root.contentFontFamily; font.pixelSize: Style.font.body; textFormat: Text.PlainText }
       Dropdown {
         width: parent.width
         showLabel: false
@@ -656,6 +667,7 @@ Panel {
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.body
           elide: Text.ElideRight
+          textFormat: Text.PlainText
         }
         Button {
           id: actionButton
@@ -680,7 +692,7 @@ Panel {
       spacing: Style.space(4)
       opacity: Model.isBlocked(controlData) ? 0.42 : 1.0
       enabled: !Model.isBlocked(controlData)
-      Text { width: parent.width; text: controlData.label + " · " + Model.valueLabel(controlData); color: root.contentForeground; font.family: root.contentFontFamily; font.pixelSize: Style.font.body }
+      Text { width: parent.width; text: controlData.label + " · " + Model.valueLabel(controlData); color: root.contentForeground; font.family: root.contentFontFamily; font.pixelSize: Style.font.body; textFormat: Text.PlainText }
       Row {
         width: parent.width
         spacing: Style.space(6)
@@ -730,6 +742,7 @@ Panel {
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.body
           elide: Text.ElideRight
+          textFormat: Text.PlainText
         }
         Text {
           id: rawValue
@@ -739,6 +752,7 @@ Panel {
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.bodySmall
           font.bold: true
+          textFormat: Text.PlainText
         }
       }
       ControlLimitation { controlData: parent.controlData }

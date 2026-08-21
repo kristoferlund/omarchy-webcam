@@ -128,6 +128,13 @@ function displayLabel(name) {
   return words.join(" ")
 }
 
+function safeOptionLabel(value) {
+  return String(value || "")
+    .replace(/&/g, "＆")
+    .replace(/</g, "‹")
+    .replace(/>/g, "›")
+}
+
 function normalizeType(type) {
   var value = String(type || "").toLowerCase().replace(/^\s+|\s+$/g, "")
   if (value === "integer") return "int"
@@ -277,7 +284,10 @@ function parseState(raw) {
 
     var optionMatch = line.match(/^\s+(-?(?:0x[0-9a-fA-F]+|\d+)):\s+(.+)$/)
     if (optionMatch && current && (current.type === "menu" || current.type === "intmenu")) {
-      current.options.push({ value: optionMatch[1], label: optionMatch[2].replace(/^\s+|\s+$/g, "") })
+      current.options.push({
+        value: optionMatch[1],
+        label: safeOptionLabel(optionMatch[2].replace(/^\s+|\s+$/g, ""))
+      })
       continue
     }
 
@@ -414,7 +424,10 @@ function limitationLabel(control) {
 function deviceOptions(devices, includeAutomatic) {
   var result = includeAutomatic ? [{ value: "", label: "Automatic · first capture device" }] : []
   for (var i = 0; i < devices.length; i++) {
-    result.push({ value: devices[i].device, label: devices[i].name + " · " + devices[i].device })
+    result.push({
+      value: devices[i].device,
+      label: safeOptionLabel(devices[i].name) + " · " + devices[i].device
+    })
   }
   return result
 }

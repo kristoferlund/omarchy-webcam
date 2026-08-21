@@ -1,6 +1,6 @@
 # Webcam Controls for Omarchy
 
-Webcam Controls adds a live camera preview and V4L2 settings to the Omarchy bar.
+Control any V4L2 webcam directly from the Omarchy bar. Webcam Controls gives you a live preview and automatically builds the right settings panel for each camera, from exposure and focus to color and framing.
 
 ## Features
 
@@ -19,15 +19,9 @@ Metadata-only `/dev/videoN` nodes are excluded. Multiple capture nodes from the 
 ## Requirements
 
 - Omarchy 4.0 or newer
-- Qt Multimedia
+- Qt Multimedia (`qt6-multimedia`)
 - `v4l2-ctl` from `v4l-utils`
 - A Linux V4L2 capture device
-
-Install the required packages if needed:
-
-```sh
-omarchy pkg add qt6-multimedia v4l-utils
-```
 
 ## Install
 
@@ -113,7 +107,7 @@ bash -n webcamctl
 
 ## Security
 
-Webcam Controls runs with user permissions inside `omarchy-shell`. `webcamctl` restricts device arguments to `/dev/videoN`, validates control names and values, and invokes `v4l2-ctl` without `eval`, `sh -c`, `sudo`, network access, or background services.
+Webcam Controls runs with user permissions inside `omarchy-shell`. `webcamctl` restricts device arguments to `/dev/videoN`, validates control names and values, and invokes `v4l2-ctl` without `eval`, `sh -c`, elevated privileges, network access, or background services.
 
 ## Remove
 

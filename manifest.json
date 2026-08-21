@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Kristofer Lund",
   "license": "MIT",
-  "description": "Live preview and generic V4L2 controls for webcams in the Omarchy bar.",
+  "description": "Control any V4L2 webcam from the Omarchy bar with a live preview and automatic device-specific settings.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Webcam Controls",
-    "description": "Preview and runtime controls for Linux V4L2 capture devices.",
+    "description": "Control any V4L2 webcam with a live preview and automatic device-specific settings.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right",

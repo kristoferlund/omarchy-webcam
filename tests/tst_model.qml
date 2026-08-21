@@ -63,6 +63,10 @@ TestCase {
     verify(options[1].label.indexOf("usb-0000") === -1)
   }
 
+  function test_externalOptionLabelsCannotContainMarkup() {
+    compare(Model.safeOptionLabel("<img src='file:///tmp/x'>&"), "‹img src='file:///tmp/x'›＆")
+  }
+
   function test_deviceListComparisonIncludesParsedIdentity() {
     var devices = Model.parseDevices(sampleDevices)
     var sameDevices = Model.parseDevices(sampleDevices)
