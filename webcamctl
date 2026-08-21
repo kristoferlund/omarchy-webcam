@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+
+set -o nounset
+set -o pipefail
+shopt -s nullglob
+
+die() {
+  printf '%s\n' "$1" >&2
+  exit "${2:-1}"
+}
+
+require_v4l2_ctl() {
+  command -v v4l2-ctl >/dev/null 2>&1 || die "v4l2-ctl is required. Install the v4l-utils package."
+}
+
+clean_field() {
+  local value="$1"
+  value="${value//$'\t'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//$'\n'/ }"
+  printf '%s' "$value"
+}
+
+device_info() {
+  local device="$1"
+  local line in_capabilities=false in_device_caps=false saw_device_caps=false
+  local capabilities_capture=false device_caps_capture=false
+  DEVICE_INFO=""
+  DEVICE_BUS=""
+  DEVICE_IS_CAPTURE=false
+
+  DEVICE_INFO="$(v4l2-ctl --device="$device" --info 2>/dev/null)" || return 1
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*Bus[[:space:]]+info[[:space:]]*:[[:space:]]*(.*)$ ]]; then
+      DEVICE_BUS="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$line" =~ ^[[:space:]]*Capabilities[[:space:]]*: ]]; then
+      in_capabilities=true
+      in_device_caps=false
+      continue
+    fi
+    if [[ "$line" =~ ^[[:space:]]*Device[[:space:]]+Caps[[:space:]]*: ]]; then
+      saw_device_caps=true
+      in_capabilities=false
+      in_device_caps=true
+      continue
+    fi
+    if [[ "$line" =~ ^[[:space:]]+(Video[[:space:]]+Capture|Video[[:space:]]+Capture[[:space:]]+Multiplanar)[[:space:]]*$ ]]; then
+      if [[ "$in_device_caps" == true ]]; then
+        device_caps_capture=true
+      elif [[ "$in_capabilities" == true ]]; then
+        capabilities_capture=true
+      fi
+    fi
+  done <<< "$DEVICE_INFO"
+  if [[ "$saw_device_caps" == true ]]; then
+    DEVICE_IS_CAPTURE="$device_caps_capture"
+  else
+    DEVICE_IS_CAPTURE="$capabilities_capture"
+  fi
+}
+
+device_record() {
+  local sys_device="$1"
+  local node="/dev/${sys_device##*/}"
+  local name="${node##*/}" sys_path="" detail=""
+
+  [[ -c "$node" ]] || return 1
+  device_info "$node" || return 1
+  [[ "$DEVICE_IS_CAPTURE" == true ]] || return 1
+
+  if [[ -r "$sys_device/name" ]]; then
+    IFS= read -r name < "$sys_device/name" || true
+  fi
+  sys_path="$(readlink -f "$sys_device/device" 2>/dev/null)" || sys_path=""
+  sys_path="${sys_path#/sys/devices/}"
+  if [[ -n "$DEVICE_BUS" && -n "$sys_path" ]]; then
+    detail="$DEVICE_BUS | $sys_path"
+  elif [[ -n "$DEVICE_BUS" ]]; then
+    detail="$DEVICE_BUS"
+  else
+    detail="$sys_path"
+  fi
+
+  printf 'DEVICE\t%s\t%s\t%s\n' \
+    "$node" "$(clean_field "$name")" "$(clean_field "$detail")"
+}
+
+devices() {
+  local sys_device
+  for sys_device in /sys/class/video4linux/video*; do
+    device_record "$sys_device" || true
+  done
+}
+
+detect_device() {
+  local requested="${1:-}"
+  local sys_device record
+
+  if [[ -n "$requested" ]]; then
+    [[ "$requested" =~ ^/dev/video[0-9]+$ ]] || die "Invalid video device: $requested" 2
+    [[ -c "$requested" ]] || die "Video device not found: $requested" 2
+    sys_device="/sys/class/video4linux/${requested##*/}"
+    [[ -d "$sys_device" ]] || die "Video device is not registered by V4L2: $requested" 2
+    record="$(device_record "$sys_device")" || die "Video device is not a capture node: $requested" 2
+    printf '%s\n' "$record"
+    return
+  fi
+
+  for sys_device in /sys/class/video4linux/video*; do
+    record="$(device_record "$sys_device")" || continue
+    printf '%s\n' "$record"
+    return
+  done
+
+  die "No V4L2 video capture device was detected." 2
+}
+
+state() {
+  local record device
+  record="$(detect_device "${1:-}")" || exit $?
+  device="${record#*$'\t'}"
+  device="${device%%$'\t'*}"
+  printf '%s\n' "$record"
+  v4l2-ctl --device="$device" --list-ctrls-menus
+}
+
+control_type() {
+  local device="$1" control="$2" output line body flags pattern
+  output="$(v4l2-ctl --device="$device" --list-ctrls-menus 2>/dev/null)" || return 1
+  pattern="^[[:space:]]*${control}[[:space:]]+0x[0-9a-fA-F]+[[:space:]]+\\(([^)]+)\\)[[:space:]]*:[[:space:]]*(.*)$"
+  while IFS= read -r line; do
+    if [[ "$line" =~ $pattern ]]; then
+      CONTROL_TYPE="${BASH_REMATCH[1],,}"
+      body="${BASH_REMATCH[2]}"
+      if [[ "$body" == *"flags="* ]]; then
+        flags="${body#*flags=}"
+        flags="${flags//[[:space:]]/}"
+        case ",$flags," in
+          *,read-only,*) return 1 ;;
+          *,has-payload,*)
+            [[ "$CONTROL_TYPE" == "str" || "$CONTROL_TYPE" == "string" ]] || return 1
+            ;;
+        esac
+      fi
+      return 0
+    fi
+  done <<< "$output"
+  return 1
+}
+
+set_control() {
+  local device="$1" control="$2" value="$3"
+
+  [[ "$device" =~ ^/dev/video[0-9]+$ && -c "$device" ]] || die "Video device not found: $device" 2
+  device_info "$device" && [[ "$DEVICE_IS_CAPTURE" == true ]] || die "Video device is not a capture node: $device" 2
+  [[ "$control" =~ ^[A-Za-z0-9_]+$ ]] || die "Invalid V4L2 control name: $control"
+  ((${#value} <= 4096)) || die "V4L2 control value is too long."
+  [[ "$value" != *[$'\t\r\n,']* ]] || die "V4L2 control value contains an unsafe separator."
+  control_type "$device" "$control" || die "Control is missing, read-only, or uses an unsupported payload: $control" 2
+
+  case "$CONTROL_TYPE" in
+    int|integer|int64|bool|boolean|menu|intmenu|bitmask|button)
+      [[ "$value" =~ ^-?(0[xX][0-9a-fA-F]+|[0-9]+)$ ]] || die "Control $control requires a decimal or hexadecimal value."
+      ;;
+    str|string)
+      ;;
+    *)
+      die "Control type cannot be set generically: $CONTROL_TYPE" 2
+      ;;
+  esac
+
+  v4l2-ctl --device="$device" --set-ctrl="${control}=${value}"
+}
+
+require_v4l2_ctl
+
+case "${1:-}" in
+  devices)
+    (($# == 1)) || die "Usage: webcamctl devices"
+    devices
+    ;;
+  state)
+    (($# <= 2)) || die "Usage: webcamctl state [device]"
+    state "${2:-}"
+    ;;
+  set)
+    (($# == 4)) || die "Usage: webcamctl set <device> <control> <value>"
+    set_control "$2" "$3" "$4"
+    ;;
+  *)
+    die "Usage: webcamctl devices | webcamctl state [device] | webcamctl set <device> <control> <value>"
+    ;;
+esac

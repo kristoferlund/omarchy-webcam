@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.kristoferlund.webcam",
+  "name": "Webcam Controls",
+  "version": "0.1.0",
+  "author": "Kristofer Lund",
+  "license": "MIT",
+  "description": "Live preview and generic V4L2 controls for webcams in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Webcam Controls",
+    "description": "Preview and runtime controls for Linux V4L2 capture devices.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "schema": [
+      {
+        "key": "device",
+        "type": "string",
+        "label": "Video device",
+        "description": "Leave empty to use the first V4L2 capture node, or choose one in the panel.",
+        "defaultValue": ""
+      }
+    ]
+  }
+}
