@@ -16,6 +16,9 @@ BarWidget {
   readonly property bool connected: panelLoader.item
     ? panelLoader.item.connected === true
     : false
+  readonly property bool poweredOff: panelLoader.item
+    ? panelLoader.item.poweredOff === true
+    : false
   readonly property bool popoutSwitchClosing: panelLoader.item
     ? panelLoader.item.popoutSwitchClosing === true
     : false
@@ -34,6 +37,14 @@ BarWidget {
 
   function refresh() {
     if (panelLoader.item) panelLoader.item.refresh()
+  }
+
+  function togglePower() {
+    if (panelLoader.item) panelLoader.item.togglePower()
+  }
+
+  function setPower(on) {
+    if (panelLoader.item) panelLoader.item.setPower(on)
   }
 
   function closeForPopoutSwitch() {
@@ -75,20 +86,26 @@ BarWidget {
     function show() { root.open() }
     function hide() { root.close() }
     function toggle() { root.toggle() }
+    function powerOn() { root.setPower(true) }
+    function powerOff() { root.setPower(false) }
+    function togglePower() { root.togglePower() }
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰄀"
-    opacity: root.connected ? 1.0 : 0.48
-    tooltipText: root.connected
-      ? "Webcam controls"
-      : "No webcam capture device detected"
+    text: root.poweredOff ? "󰗟" : "󰄀"
+    opacity: root.connected || root.poweredOff ? 1.0 : 0.48
+    tooltipText: root.poweredOff
+      ? "Webcam powered off · right-click to power on"
+      : (root.connected
+        ? "Webcam controls · right-click to power off"
+        : "No webcam capture device detected")
 
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.MiddleButton) root.refresh()
+      else if (buttonCode === Qt.RightButton) root.togglePower()
       else root.toggle()
     }
   }

@@ -431,3 +431,41 @@ function deviceOptions(devices, includeAutomatic) {
   }
   return result
 }
+
+// Parses one "POWER\t<usb-id>\t<on|off|unsupported>\t<writable|locked>\t<name>"
+// line from `webcamctl power-state`.
+function parsePower(raw) {
+  var result = { id: "", state: "unknown", writable: false, name: "", supported: false }
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf("POWER\t") !== 0) continue
+    var parts = lines[i].split("\t")
+    var id = parts.length > 1 ? parts[1] : ""
+    var state = parts.length > 2 ? parts[2] : ""
+    if (!/^\d+-\d+(\.\d+)*$/.test(id) || (state !== "on" && state !== "off")) {
+      result.state = "unsupported"
+      return result
+    }
+    result.id = id
+    result.state = state
+    result.writable = parts.length > 3 && parts[3] === "writable"
+    result.name = parts.length > 4 ? parts.slice(4).join(" ") : ""
+    result.supported = true
+    return result
+  }
+  return result
+}
+
+function powerLabel(power) {
+  if (!power || !power.supported) return "Camera power unavailable"
+  return power.state === "on" ? "Camera powered on" : "Camera powered off"
+}
+
+function powerDescription(power) {
+  if (!power || power.state === "unknown") return ""
+  if (!power.supported) return "Only USB cameras can be powered off from here."
+  if (!power.writable) return "One-time setup needed before the camera can be switched off."
+  return power.state === "on"
+    ? "Switch off to disconnect the camera at the USB level; no app can use it."
+    : "The camera is disconnected at the USB level. Switch on to reconnect it."
+}

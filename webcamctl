@@ -173,6 +173,117 @@ set_control() {
   v4l2-ctl --device="$device" --set-ctrl="${control}=${value}"
 }
 
+usb_device_for_node() {
+  local node="$1" path
+  [[ "$node" =~ ^/dev/video[0-9]+$ ]] || return 1
+  path="$(readlink -f "/sys/class/video4linux/${node##*/}/device" 2>/dev/null)" || return 1
+  while [[ -n "$path" && "$path" != "/" ]]; do
+    if [[ -f "$path/idVendor" && -f "$path/authorized" ]]; then
+      printf '%s\n' "${path##*/}"
+      return 0
+    fi
+    path="${path%/*}"
+  done
+  return 1
+}
+
+usb_device_has_video_interface() {
+  local class_file
+  for class_file in "$1"/*/bInterfaceClass; do
+    [[ -r "$class_file" ]] || continue
+    [[ "$(<"$class_file")" == "0e" ]] && return 0
+  done
+  return 1
+}
+
+usb_device_name() {
+  local dir="$1" manufacturer="" product=""
+  [[ -r "$dir/manufacturer" ]] && IFS= read -r manufacturer < "$dir/manufacturer" || true
+  [[ -r "$dir/product" ]] && IFS= read -r product < "$dir/product" || true
+  if [[ -n "$product" && -n "$manufacturer" && "$product" != *"$manufacturer"* ]]; then
+    printf '%s %s' "$manufacturer" "$product"
+  else
+    printf '%s' "${product:-$manufacturer}"
+  fi
+}
+
+validate_usb_id() {
+  [[ "$1" =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]] || die "Invalid USB device id: $1" 2
+  [[ -d "/sys/bus/usb/devices/$1" && -f "/sys/bus/usb/devices/$1/idVendor" ]] \
+    || die "USB device not found: $1" 2
+}
+
+# Prints: POWER <usb-id> <on|off|unsupported> <writable|locked> <name>
+power_state() {
+  local target="${1:-}" usb_id="" dir record device
+  if [[ "$target" =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]]; then
+    usb_id="$target"
+  else
+    record="$(detect_device "$target" 2>/dev/null)" || {
+      # No capture node: nothing to map, the caller may retry with a stored USB id.
+      printf 'POWER\t\tunsupported\tlocked\t\n'
+      return 0
+    }
+    device="${record#*$'\t'}"
+    device="${device%%$'\t'*}"
+    usb_id="$(usb_device_for_node "$device")" || {
+      printf 'POWER\t\tunsupported\tlocked\t\n'
+      return 0
+    }
+  fi
+  validate_usb_id "$usb_id"
+  dir="/sys/bus/usb/devices/$usb_id"
+  local state="off" access="locked"
+  [[ "$(<"$dir/authorized")" == "1" ]] && state="on"
+  [[ -w "$dir/authorized" ]] && access="writable"
+  printf 'POWER\t%s\t%s\t%s\t%s\n' "$usb_id" "$state" "$access" "$(clean_field "$(usb_device_name "$dir")")"
+}
+
+set_power() {
+  local usb_id="$1" mode="$2" dir value
+  validate_usb_id "$usb_id"
+  dir="/sys/bus/usb/devices/$usb_id"
+  case "$mode" in
+    on) value=1 ;;
+    off)
+      value=0
+      usb_device_has_video_interface "$dir" \
+        || die "Refusing to power off $usb_id: it does not expose a video interface." 2
+      ;;
+    *) die "Usage: webcamctl power <usb-id> on|off" ;;
+  esac
+  [[ -w "$dir/authorized" ]] \
+    || die "Camera power control is not set up yet. Run the one-time setup from the panel." 3
+  printf '%s' "$value" > "$dir/authorized" || die "Could not change the camera power state."
+}
+
+# One-time privileged setup: a udev rule hands the USB camera's "authorized"
+# attribute to the current user so later toggles need no password.
+power_setup() {
+  local user rule
+  user="$(id -un)"
+  [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "Unsupported user name for the udev rule: $user"
+  command -v pkexec >/dev/null 2>&1 || die "pkexec is required for the one-time setup."
+  rule="$(printf '%s\n' \
+    "# Webcam Controls for Omarchy: let $user power USB cameras on and off." \
+    '# Cameras are matched by their USB Video Class control interface (0e01).' \
+    'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="", IMPORT{builtin}="usb_id"' \
+    "SUBSYSTEM==\"usb\", ENV{DEVTYPE}==\"usb_device\", ENV{ID_USB_INTERFACES}==\"*:0e01*\", RUN+=\"/bin/chown $user /sys%p/authorized\"")"
+  pkexec /bin/sh -c '
+    set -e
+    rule="$1"; user="$2"
+    printf "%s\n" "$rule" > /etc/udev/rules.d/90-webcam-power.rules
+    udevadm control --reload
+    for dev in /sys/bus/usb/devices/*; do
+      [ -f "$dev/idVendor" ] && [ -f "$dev/authorized" ] || continue
+      for class in "$dev"/*/bInterfaceClass; do
+        [ -r "$class" ] || continue
+        if [ "$(cat "$class")" = "0e" ]; then chown "$user" "$dev/authorized"; break; fi
+      done
+    done
+  ' sh "$rule" "$user" || die "The camera power setup was cancelled or failed." 3
+}
+
 require_v4l2_ctl
 
 case "${1:-}" in
@@ -188,7 +299,19 @@ case "${1:-}" in
     (($# == 4)) || die "Usage: webcamctl set <device> <control> <value>"
     set_control "$2" "$3" "$4"
     ;;
+  power-state)
+    (($# <= 2)) || die "Usage: webcamctl power-state [device|usb-id]"
+    power_state "${2:-}"
+    ;;
+  power)
+    (($# == 3)) || die "Usage: webcamctl power <usb-id> on|off"
+    set_power "$2" "$3"
+    ;;
+  power-setup)
+    (($# == 1)) || die "Usage: webcamctl power-setup"
+    power_setup
+    ;;
   *)
-    die "Usage: webcamctl devices | webcamctl state [device] | webcamctl set <device> <control> <value>"
+    die "Usage: webcamctl devices | state [device] | set <device> <control> <value> | power-state [device|usb-id] | power <usb-id> on|off | power-setup"
     ;;
 esac
