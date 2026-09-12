@@ -38,6 +38,20 @@ Panel {
   readonly property color contentForeground: root.bar ? root.bar.foreground : Color.foreground
   readonly property string contentFontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
+  // One MediaDevices for the whole panel: the preview needs the matched
+  // CameraDevice, and so does anything that asks which formats it offers.
+  MediaDevices { id: mediaDevices }
+
+  readonly property var previewDevice: {
+    var inputs = mediaDevices.videoInputs
+    for (var i = 0; i < inputs.length; i++) {
+      if (String(inputs[i].id) === root.device) return inputs[i]
+    }
+    return null
+  }
+  readonly property var previewFormats: root.previewDevice ? root.previewDevice.videoFormats : []
+  readonly property var previewFormat: Model.pickFormat(root.previewFormats, "")
+
   function open() {
     root.refresh()
     root.controller.show()
@@ -454,20 +468,16 @@ Panel {
     Item {
       id: previewHost
       property string cameraError: ""
-      readonly property var matchedDevice: {
-        var inputs = mediaDevices.videoInputs
-        for (var i = 0; i < inputs.length; i++) {
-          if (String(inputs[i].id) === root.device) return inputs[i]
-        }
-        return null
-      }
+      readonly property var matchedDevice: root.previewDevice
       readonly property string stateLabel: matchedDevice === null ? "UNAVAILABLE"
         : (camera.error !== Camera.NoError ? "IN USE / ERROR" : "LIVE")
 
-      MediaDevices { id: mediaDevices }
       Camera {
         id: camera
         cameraDevice: previewHost.matchedDevice
+        // Without this Qt negotiates the driver's first mode, which on a capture
+        // card is its largest and frequently undeliverable one.
+        cameraFormat: root.previewFormat
         active: previewHost.matchedDevice !== null
         onErrorOccurred: function(error, errorString) { previewHost.cameraError = errorString }
       }
