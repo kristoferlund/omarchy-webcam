@@ -297,4 +297,21 @@ TestCase {
     compare(Model.pickFormat([], ""), null)
     compare(Model.pickFormat(null, ""), null)
   }
+
+  function test_resolution_options_are_deduped_and_ordered() {
+    var options = Model.resolutionOptions(captureCardFormats)
+    compare(options[0].value, "")            // automatic first
+    compare(options[1].value, "3840x2160")   // then largest to smallest
+    compare(options[2].value, "2560x1440")
+    compare(options[3].value, "1920x1080")   // listed twice, offered once
+    compare(options[4].value, "1280x720")
+    compare(options[5].value, "640x480")
+    compare(options.length, 6)
+  }
+
+  function test_resolution_options_for_a_deviceless_panel() {
+    var options = Model.resolutionOptions([])
+    compare(options.length, 1)
+    compare(options[0].value, "")
+  }
 }
