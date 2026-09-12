@@ -520,17 +520,43 @@ Panel {
       id: previewHost
       property string cameraError: ""
       readonly property var matchedDevice: root.previewDevice
+
+      // Qt drops cameraFormat both when cameraDevice changes and when the camera
+      // is activated, so it cannot be bound -- it has to be re-applied after
+      // each of those. Skipping a redundant assignment keeps activation from
+      // chasing its own tail.
+      function applyFormat() {
+        var want = root.previewFormat
+        if (!camera.cameraDevice || !want) return
+        var current = camera.cameraFormat
+        if (current && current.resolution.width === want.resolution.width
+            && current.resolution.height === want.resolution.height) return
+        camera.cameraFormat = want
+      }
+
+      Component.onCompleted: previewHost.applyFormat()
       readonly property string stateLabel: matchedDevice === null ? "UNAVAILABLE"
         : (camera.error !== Camera.NoError ? "IN USE / ERROR" : "LIVE")
 
       Camera {
         id: camera
         cameraDevice: previewHost.matchedDevice
-        // Without this Qt negotiates the driver's first mode, which on a capture
-        // card is its largest and frequently undeliverable one.
-        cameraFormat: root.previewFormat
         active: previewHost.matchedDevice !== null
+        // Setting cameraDevice resets cameraFormat inside Qt, so the format has
+        // to be re-applied afterwards rather than bound. A binding only re-fires
+        // when its value differs, and leaving a device and returning to it can
+        // yield an equal format -- the reset then stands, and the preview drops
+        // back to the driver's first mode with the panel still showing the size
+        // the user picked.
+        onCameraDeviceChanged: previewHost.applyFormat()
+        onActiveChanged: if (camera.active) previewHost.applyFormat()
         onErrorOccurred: function(error, errorString) { previewHost.cameraError = errorString }
+      }
+
+      // Re-apply when the choice changes but the device does not.
+      Connections {
+        target: root
+        function onPreviewFormatChanged() { previewHost.applyFormat() }
       }
       CaptureSession { camera: camera; videoOutput: videoOutput }
       VideoOutput {
