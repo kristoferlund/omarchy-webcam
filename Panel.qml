@@ -25,6 +25,7 @@ Panel {
   property bool menuOpen: false
   property bool refreshPending: false
   property string lastError: ""
+  property string lastNotice: ""
   property var writeQueue: []
   property var activeWrite: null
 
@@ -50,7 +51,9 @@ Panel {
     return null
   }
   readonly property var previewFormats: root.previewDevice ? root.previewDevice.videoFormats : []
-  readonly property var previewFormat: Model.pickFormat(root.previewFormats, "")
+  readonly property string previewResolution: String(setting("resolution", "") || "").trim()
+  readonly property var previewFormat: Model.pickFormat(root.previewFormats, root.previewResolution)
+  readonly property var resolutionChoices: Model.resolutionOptions(root.previewFormats)
 
   function open() {
     root.refresh()
@@ -82,6 +85,10 @@ Panel {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
+  function selectResolution(value) {
+    root.persistSettings({ resolution: String(value || "") })
+  }
+
   function selectDevice(value) {
     var selected = String(value || "")
     if (selected !== "" && !/^\/dev\/video\d+$/.test(selected)) return
@@ -91,7 +98,8 @@ Panel {
     root.controls = []
     root.writeQueue = []
     root.lastError = ""
-    root.persistSettings({ device: selected })
+    root.lastNotice = ""
+    root.persistSettings({ device: selected, resolution: "" })
     root.refreshState()
   }
 
@@ -113,6 +121,7 @@ Panel {
     }
     root.loading = true
     root.lastError = ""
+    root.lastNotice = ""
     root.stateRequestDevice = root.targetDevice
     stateProc.command = ["bash", root.helperPath, "state", root.stateRequestDevice]
     stateProc.running = true
@@ -124,8 +133,11 @@ Panel {
     root.device = state.device
     root.deviceName = state.deviceName || state.device || "Webcam"
     root.controls = state.controls
-    if (root.connected && root.controls.length === 0)
-      root.lastError = "This capture node did not report any V4L2 controls. The preview may still be available."
+    // Capture cards expose no controls at all -- that is the hardware being a
+    // capture card, not a failure, so it must not read as an error.
+    root.lastNotice = (root.connected && root.controls.length === 0)
+      ? "This device reports no V4L2 controls, which is normal for a capture card. Preview and resolution still work."
+      : ""
   }
 
   function updateValue(name, value) {
@@ -155,6 +167,7 @@ Panel {
     root.activeWrite = nextQueue.shift()
     root.writeQueue = nextQueue
     root.lastError = ""
+    root.lastNotice = ""
     writeProc.command = [
       "bash", root.helperPath, "set", root.device,
       root.activeWrite.name, root.activeWrite.value
@@ -401,6 +414,33 @@ Panel {
             onChanged: function(value) { root.selectDevice(value) }
           }
         }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(4)
+          visible: root.resolutionChoices.length > 1
+
+          Text {
+            text: "PREVIEW RESOLUTION"
+            color: Qt.darker(root.contentForeground, 1.4)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 0.8
+            textFormat: Text.PlainText
+          }
+
+          Dropdown {
+            width: parent.width
+            showLabel: false
+            value: root.previewResolution
+            options: root.resolutionChoices
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onPopupOpenChanged: root.menuOpen = popupOpen
+            onChanged: function(value) { root.selectResolution(value) }
+          }
+        }
       }
 
       ScrollView {
@@ -425,6 +465,17 @@ Panel {
           // Keep transient scrollbars out of right-aligned values and reset targets.
           width: Math.max(1, controlsScroll.availableWidth - Style.space(14))
           spacing: Style.space(8)
+
+          Text {
+            visible: root.lastNotice !== "" && root.lastError === ""
+            width: parent.width
+            text: root.lastNotice
+            color: Qt.darker(root.contentForeground, 1.4)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+          }
 
           Text {
             visible: root.lastError !== ""

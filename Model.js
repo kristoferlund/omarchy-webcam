@@ -518,3 +518,27 @@ function pickFormat(formats, requested) {
   best = bestFormatWithin(formats, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
   return best !== null ? best : smallestFormat(formats)
 }
+
+// Distinct sizes, largest first, with automatic offered ahead of them. A capture
+// card exposes no V4L2 controls at all, so without this the panel has nothing to
+// show for one beyond an apology.
+function resolutionOptions(formats) {
+  var seen = {}
+  var sizes = []
+  var i
+  for (i = 0; i < (formats ? formats.length : 0); i++) {
+    var key = formatKey(formats[i])
+    if (key === "" || seen[key] === true) continue
+    seen[key] = true
+    sizes.push(formatSize(formats[i]))
+  }
+  sizes.sort(function (a, b) { return (b.width * b.height) - (a.width * a.height) })
+  var result = [{ value: "", label: "Automatic · up to " + PREVIEW_MAX_HEIGHT + "p" }]
+  for (i = 0; i < sizes.length; i++) {
+    result.push({
+      value: sizes[i].width + "x" + sizes[i].height,
+      label: sizes[i].width + " × " + sizes[i].height
+    })
+  }
+  return result
+}

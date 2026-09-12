@@ -25,6 +25,13 @@
         "label": "Video device",
         "description": "Leave empty to use the first V4L2 capture node, or choose one in the panel.",
         "defaultValue": ""
+      },
+      {
+        "key": "resolution",
+        "type": "string",
+        "label": "Preview resolution",
+        "description": "Leave empty to choose automatically, or pick a size the device offers in the panel.",
+        "defaultValue": ""
       }
     ]
   }
