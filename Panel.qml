@@ -183,6 +183,7 @@ Panel {
     stderr: StdioCollector { id: devicesError; waitForEnd: true }
     onExited: function(exitCode) {
       Qt.callLater(function() {
+        if (!root || typeof root.applyState !== "function") return
         if (exitCode === 0) {
           var parsedDevices = Model.parseDevices(devicesOutput.text)
           if (!Model.deviceListsEqual(root.devices, parsedDevices)) root.devices = parsedDevices
