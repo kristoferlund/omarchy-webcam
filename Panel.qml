@@ -200,6 +200,7 @@ Panel {
     stderr: StdioCollector { id: stateError; waitForEnd: true }
     onExited: function(exitCode) {
       Qt.callLater(function() {
+        if (!root || typeof root.applyState !== "function") return
         root.loading = false
         var stale = root.stateRequestDevice !== root.targetDevice
         if (!stale && exitCode === 0) {
@@ -225,7 +226,7 @@ Panel {
     stdout: StdioCollector { waitForEnd: true }
     stderr: StdioCollector { id: writeError; waitForEnd: true }
     onExited: function(exitCode) {
-      Qt.callLater(function() { root.finishWrite(exitCode, writeError.text) })
+      Qt.callLater(function() { if (root && typeof root.finishWrite === "function") root.finishWrite(exitCode, writeError.text) })
     }
   }
 
