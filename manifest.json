@@ -25,6 +25,13 @@
         "label": "Video device",
         "description": "Leave empty to use the first V4L2 capture node, or choose one in the panel.",
         "defaultValue": ""
+      },
+      {
+        "key": "powerDevice",
+        "type": "string",
+        "label": "USB device for power control",
+        "description": "Remembered automatically (for example 1-3) so a powered-off camera can be switched back on.",
+        "defaultValue": ""
       }
     ]
   }

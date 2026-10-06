@@ -242,4 +242,42 @@ TestCase {
     compare(Model.valueLabel(Model.control(updated, "exposure_time_absolute")), "33.3 ms")
     compare(Model.control(controls, "exposure_time_absolute").value, 200)
   }
+
+  function test_parsePowerReportsWritableUsbCamera() {
+    var power = Model.parsePower("POWER\t1-3\ton\twritable\tACME USB Camera\n")
+    compare(power.supported, true)
+    compare(power.id, "1-3")
+    compare(power.state, "on")
+    compare(power.writable, true)
+    compare(power.name, "ACME USB Camera")
+    compare(Model.powerLabel(power), "Camera powered on")
+    verify(Model.powerDescription(power).indexOf("Switch off") === 0)
+  }
+
+  function test_parsePowerReportsLockedPoweredOffCamera() {
+    var power = Model.parsePower("noise\nPOWER\t2-1.4\toff\tlocked\t\n")
+    compare(power.supported, true)
+    compare(power.id, "2-1.4")
+    compare(power.state, "off")
+    compare(power.writable, false)
+    compare(power.name, "")
+    compare(Model.powerLabel(power), "Camera powered off")
+    verify(Model.powerDescription(power).indexOf("One-time setup") === 0)
+  }
+
+  function test_parsePowerRejectsUnsupportedOrMalformedInput() {
+    var unsupported = Model.parsePower("POWER\t\tunsupported\tlocked\t\n")
+    compare(unsupported.supported, false)
+    compare(unsupported.state, "unsupported")
+    compare(unsupported.id, "")
+
+    var malformed = Model.parsePower("POWER\t../etc\ton\twritable\tbad\n")
+    compare(malformed.supported, false)
+    compare(malformed.state, "unsupported")
+
+    var missing = Model.parsePower("")
+    compare(missing.supported, false)
+    compare(missing.state, "unknown")
+    compare(Model.powerDescription(missing), "")
+  }
 }

@@ -27,10 +27,16 @@ Panel {
   property string lastError: ""
   property var writeQueue: []
   property var activeWrite: null
+  property var power: ({ id: "", state: "unknown", writable: false, name: "", supported: false })
+  property bool powerBusy: false
+  property bool powerSetupBusy: false
 
   readonly property var barIdentity: hostWidget || root
   readonly property bool connected: device !== ""
   readonly property string configuredDevice: String(setting("device", "") || "").trim()
+  readonly property string configuredPowerId: String(setting("powerDevice", "") || "").trim()
+  readonly property bool poweredOff: power.state === "off"
+  readonly property bool powerKnown: power.state !== "unknown"
   readonly property var deviceChoices: Model.deviceOptions(devices, true)
   readonly property var controlGroups: Model.groupControls(controls)
   readonly property string helperPath: decodeURIComponent(
@@ -90,6 +96,36 @@ Panel {
   function refresh() {
     root.refreshDevices()
     root.refreshState()
+    root.refreshPower()
+  }
+
+  function refreshPower() {
+    if (powerProc.running) return
+    // A powered-off camera has no capture node, so fall back to the remembered USB id.
+    var target = root.device !== "" ? root.device : (root.targetDevice !== "" ? root.targetDevice : root.configuredPowerId)
+    powerProc.command = ["bash", root.helperPath, "power-state", target]
+    powerProc.running = true
+  }
+
+  function setPower(on) {
+    if (root.powerBusy || !root.power.supported || root.power.id === "") return
+    root.powerBusy = true
+    root.lastError = ""
+    powerWriteProc.command = ["bash", root.helperPath, "power", root.power.id, on ? "on" : "off"]
+    powerWriteProc.running = true
+  }
+
+  function togglePower() {
+    if (!root.power.supported) return
+    root.setPower(root.power.state !== "on")
+  }
+
+  function setupPower() {
+    if (root.powerSetupBusy) return
+    root.powerSetupBusy = true
+    root.lastError = ""
+    powerSetupProc.command = ["bash", root.helperPath, "power-setup"]
+    powerSetupProc.running = true
   }
 
   function refreshState() {
@@ -163,6 +199,7 @@ Panel {
     root.targetDevice = root.configuredDevice
     root.refreshDevices()
     root.refreshState()
+    root.refreshPower()
   }
   onConfiguredDeviceChanged: {
     if (root.targetDevice === root.configuredDevice) return
@@ -175,6 +212,68 @@ Panel {
     interval: 180
     repeat: false
     onTriggered: root.refreshState()
+  }
+
+  // The kernel re-enumerates the camera after a power change; poll a few times.
+  Timer {
+    id: refreshAfterPower
+    property int remaining: 0
+    interval: 700
+    repeat: true
+    running: remaining > 0
+    onTriggered: {
+      remaining -= 1
+      root.refresh()
+    }
+  }
+
+  Process {
+    id: powerProc
+    stdout: StdioCollector { id: powerOutput; waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true }
+    onExited: function(exitCode) {
+      Qt.callLater(function() {
+        var parsed = exitCode === 0 ? Model.parsePower(powerOutput.text)
+          : { id: "", state: "unsupported", writable: false, name: "", supported: false }
+        root.power = parsed
+        if (parsed.id !== "" && parsed.id !== root.configuredPowerId)
+          root.persistSettings({ powerDevice: parsed.id })
+      })
+    }
+  }
+
+  Process {
+    id: powerWriteProc
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { id: powerWriteError; waitForEnd: true }
+    onExited: function(exitCode) {
+      Qt.callLater(function() {
+        root.powerBusy = false
+        if (exitCode !== 0) {
+          var message = String(powerWriteError.text || "").trim()
+          root.lastError = message !== "" ? message : "Could not change the camera power state."
+          root.refreshPower()
+          return
+        }
+        refreshAfterPower.remaining = 4
+      })
+    }
+  }
+
+  Process {
+    id: powerSetupProc
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { id: powerSetupError; waitForEnd: true }
+    onExited: function(exitCode) {
+      Qt.callLater(function() {
+        root.powerSetupBusy = false
+        if (exitCode !== 0) {
+          var message = String(powerSetupError.text || "").trim()
+          root.lastError = message !== "" ? message : "The camera power setup did not complete."
+        }
+        root.refreshPower()
+      })
+    }
   }
 
   Process {
@@ -206,6 +305,7 @@ Panel {
         var stale = root.stateRequestDevice !== root.targetDevice
         if (!stale && exitCode === 0) {
           root.applyState(stateOutput.text)
+          root.refreshPower()
         } else if (!stale) {
           root.device = ""
           root.deviceName = "Webcam"
@@ -306,11 +406,11 @@ Panel {
             id: heroIcon
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "󰄀"
+            text: root.poweredOff ? "󰗟" : "󰄀"
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.display
-            opacity: root.connected ? 1.0 : 0.42
+            opacity: root.connected || root.poweredOff ? 1.0 : 0.42
             textFormat: Text.PlainText
           }
 
@@ -337,7 +437,8 @@ Panel {
             Text {
               width: parent.width
               text: root.loading ? "READING CAMERA SETTINGS"
-                : (root.connected ? root.deviceName.toUpperCase() : "NO CAPTURE DEVICE")
+                : (root.connected ? root.deviceName.toUpperCase()
+                  : (root.poweredOff ? "CAMERA POWERED OFF" : "NO CAPTURE DEVICE"))
               color: Qt.darker(root.contentForeground, 1.4)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -387,6 +488,67 @@ Panel {
             onChanged: function(value) { root.selectDevice(value) }
           }
         }
+
+        Column {
+          visible: root.powerKnown
+          width: parent.width
+          spacing: Style.space(4)
+
+          Text {
+            text: "CAMERA POWER"
+            color: Qt.darker(root.contentForeground, 1.4)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 0.8
+            textFormat: Text.PlainText
+          }
+
+          Toggle {
+            width: parent.width
+            label: Model.powerLabel(root.power)
+            description: Model.powerDescription(root.power)
+            checked: root.power.state === "on"
+            enabled: root.power.supported && root.power.writable && !root.powerBusy
+            opacity: enabled ? 1.0 : 0.55
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onClicked: root.togglePower()
+          }
+
+          Item {
+            visible: root.power.supported && !root.power.writable
+            width: parent.width
+            implicitHeight: Math.max(setupLabel.implicitHeight, setupButton.implicitHeight)
+
+            Text {
+              id: setupLabel
+              anchors.left: parent.left
+              anchors.right: setupButton.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Installs a udev rule (asks for your password once)."
+              color: Qt.darker(root.contentForeground, 1.45)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+              textFormat: Text.PlainText
+            }
+
+            Button {
+              id: setupButton
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.powerSetupBusy ? "Waiting…" : "Set up"
+              bordered: true
+              focusable: true
+              enabled: !root.powerSetupBusy
+              foreground: root.contentForeground
+              fontFamily: root.contentFontFamily
+              onClicked: root.setupPower()
+            }
+          }
+        }
       }
 
       ScrollView {
@@ -426,7 +588,9 @@ Panel {
           Text {
             visible: !root.loading && !root.connected && root.lastError === ""
             width: parent.width
-            text: "Connect a V4L2 video capture device, then refresh. Metadata-only video nodes are not listed."
+            text: root.poweredOff
+              ? "The camera is powered off. Switch it on above to list its controls."
+              : "Connect a V4L2 video capture device, then refresh. Metadata-only video nodes are not listed."
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.body

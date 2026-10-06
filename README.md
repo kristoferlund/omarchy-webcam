@@ -13,6 +13,7 @@ Control any V4L2 webcam directly from the Omarchy bar. Webcam Controls gives you
 - Read-only, inactive, grabbed, private, and compound controls
 - Camera-reported default values
 - Persistent device selection
+- Camera power switch: disconnect a USB camera at the kernel level so no application can use it, and reconnect it with one click
 
 Metadata-only `/dev/videoN` nodes are excluded. Multiple capture nodes from the same physical device remain available because they may provide different capabilities.
 
@@ -40,12 +41,23 @@ omarchy bar move io.github.kristoferlund.webcam --section left
 ## Usage
 
 - Left-click the camera icon to open or close the panel.
+- Right-click the icon to power the camera off or on. The icon switches to a crossed camera while it is off.
 - Middle-click the icon to refresh devices and settings.
 - Select a camera from the device menu.
 - Double-click a slider's displayed value to restore its reported default.
 - Press Escape to close the panel.
 
 The preview stays at the top of the panel. The settings area grows to the available screen height and scrolls when necessary. Closing the panel stops the preview and releases the camera.
+
+## Camera power
+
+USB cameras can be switched off from the panel or with a right-click on the bar icon. The plugin writes `0` to the device's `authorized` attribute in sysfs, which makes the kernel drop the camera entirely: its `/dev/video*` nodes disappear and no application, including the preview, can open it. Switching it back on re-enumerates the camera in about a second.
+
+Writing that attribute needs root, so the first use asks for a one-time **Set up**. It runs `pkexec` once to install `/etc/udev/rules.d/90-webcam-power.rules`, which hands the `authorized` attribute of every USB Video Class device to your user. After that, toggling needs no password. Cameras that are not USB devices (MIPI or PCI cameras) show the switch as unavailable.
+
+The USB id of the camera (for example `1-3`) is remembered in the widget settings as `powerDevice`, so a powered-off camera, which no longer has a capture node, can still be switched back on.
+
+IPC: `omarchy-shell io.github.kristoferlund.webcam powerOff`, `powerOn`, or `togglePower`.
 
 ## Controls
 
