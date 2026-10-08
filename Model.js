@@ -431,3 +431,114 @@ function deviceOptions(devices, includeAutomatic) {
   }
   return result
 }
+
+// Qt Multimedia negotiates a device's default format whenever Camera.cameraFormat
+// is left unset, and that default is the first mode the driver reports. On a
+// capture card the first mode is the largest one -- 3840x2160 on a RODE
+// Streamer X -- and a card cannot upscale an incoming 1080p signal to fill it.
+// The preview then shows the device's own "capture format not supported" card
+// instead of video, which reads as a broken plugin. Webcams hide the bug because
+// their first mode is one they can always produce.
+var PREVIEW_MAX_WIDTH = 1920
+var PREVIEW_MAX_HEIGHT = 1080
+
+function formatSize(format) {
+  if (!format || !format.resolution) return null
+  var width = format.resolution.width
+  var height = format.resolution.height
+  if (!(width > 0) || !(height > 0)) return null
+  return { width: width, height: height }
+}
+
+function formatKey(format) {
+  var size = formatSize(format)
+  return size === null ? "" : size.width + "x" + size.height
+}
+
+function formatRate(format) {
+  var rate = format ? format.maxFrameRate : 0
+  return (typeof rate === "number" && rate > 0) ? rate : 0
+}
+
+// Larger wins, then faster. Ties on both keep whichever was found first, so the
+// driver's own ordering breaks the last tie.
+function preferFormat(candidate, current) {
+  if (current === null) return true
+  var a = formatSize(candidate)
+  var b = formatSize(current)
+  if (a === null) return false
+  if (b === null) return true
+  var areaA = a.width * a.height
+  var areaB = b.width * b.height
+  if (areaA !== areaB) return areaA > areaB
+  return formatRate(candidate) > formatRate(current)
+}
+
+function bestFormatWithin(formats, maxWidth, maxHeight) {
+  var best = null
+  for (var i = 0; i < (formats ? formats.length : 0); i++) {
+    var size = formatSize(formats[i])
+    if (size === null) continue
+    if (maxWidth > 0 && size.width > maxWidth) continue
+    if (maxHeight > 0 && size.height > maxHeight) continue
+    if (preferFormat(formats[i], best)) best = formats[i]
+  }
+  return best
+}
+
+// Last resort for a device that only offers modes above the cap: the smallest
+// of them is likelier to be deliverable than the largest.
+function smallestFormat(formats) {
+  var best = null
+  for (var i = 0; i < (formats ? formats.length : 0); i++) {
+    var size = formatSize(formats[i])
+    if (size === null) continue
+    if (best === null) { best = formats[i]; continue }
+    var current = formatSize(best)
+    var areaCandidate = size.width * size.height
+    var areaCurrent = current.width * current.height
+    if (areaCandidate < areaCurrent
+        || (areaCandidate === areaCurrent && formatRate(formats[i]) > formatRate(best)))
+      best = formats[i]
+  }
+  return best
+}
+
+function pickFormat(formats, requested) {
+  var want = String(requested || "").trim()
+  var best = null
+  var i
+  if (want !== "") {
+    for (i = 0; i < (formats ? formats.length : 0); i++) {
+      if (formatKey(formats[i]) !== want) continue
+      if (preferFormat(formats[i], best)) best = formats[i]
+    }
+    if (best !== null) return best
+  }
+  best = bestFormatWithin(formats, PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
+  return best !== null ? best : smallestFormat(formats)
+}
+
+// Distinct sizes, largest first, with automatic offered ahead of them. A capture
+// card exposes no V4L2 controls at all, so without this the panel has nothing to
+// show for one beyond an apology.
+function resolutionOptions(formats) {
+  var seen = {}
+  var sizes = []
+  var i
+  for (i = 0; i < (formats ? formats.length : 0); i++) {
+    var key = formatKey(formats[i])
+    if (key === "" || seen[key] === true) continue
+    seen[key] = true
+    sizes.push(formatSize(formats[i]))
+  }
+  sizes.sort(function (a, b) { return (b.width * b.height) - (a.width * a.height) })
+  var result = [{ value: "", label: "Automatic · up to " + PREVIEW_MAX_HEIGHT + "p" }]
+  for (i = 0; i < sizes.length; i++) {
+    result.push({
+      value: sizes[i].width + "x" + sizes[i].height,
+      label: sizes[i].width + " × " + sizes[i].height
+    })
+  }
+  return result
+}
