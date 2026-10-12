@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.kristoferlund.webcam",
   "name": "Webcam Controls",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Kristofer Lund",
   "license": "MIT",
   "description": "Control any V4L2 webcam from the Omarchy bar with a live preview and automatic device-specific settings.",
