@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: pacman -Syu --noconfirm --needed git jq shellcheck qt6-declarative
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check manifest
         run: |
