@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtMultimedia
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
@@ -35,7 +36,7 @@ Panel {
   readonly property var controlGroups: Model.groupControls(controls)
   readonly property string helperPath: decodeURIComponent(
     String(Qt.resolvedUrl("webcamctl")).replace(/^file:\/\//, ""))
-  readonly property color contentForeground: root.bar ? root.bar.foreground : Color.foreground
+  readonly property color contentForeground: root.bar ? root.bar.foreground : Commons.Color.foreground
   readonly property string contentFontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
   function open() {
@@ -266,7 +267,7 @@ Panel {
           clip: true
           color: Qt.rgba(root.contentForeground.r * 0.08, root.contentForeground.g * 0.08,
                          root.contentForeground.b * 0.08, 1)
-          borderSpec: Border.controlSpec("normal", root.contentForeground, Color.accent)
+          borderSpec: Border.controlSpec("normal", root.contentForeground, Commons.Color.accent)
 
           Loader {
             id: previewLoader
@@ -416,7 +417,7 @@ Panel {
             visible: root.lastError !== ""
             width: parent.width
             text: root.lastError
-            color: root.bar ? root.bar.urgent : Color.urgent
+            color: root.bar ? root.bar.urgent : Commons.Color.urgent
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
