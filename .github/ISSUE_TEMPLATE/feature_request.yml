@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an improvement or new capability.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and why the plugin does not support it today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you would like it to work. Ideas that work for any V4L2 camera are preferred over changes for one model.
+  - type: input
+    id: camera
+    attributes:
+      label: Camera
+      description: If the request relates to specific hardware, which camera?
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I am willing to open a pull request for this.

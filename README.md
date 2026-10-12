@@ -100,10 +100,14 @@ Run validation:
 
 ```sh
 omarchy plugin validate .
-qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml tests/tst_model.qml
-qmltestrunner -input tests -import "$OMARCHY_PATH/shell" -o -,txt
+/usr/lib/qt6/bin/qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml tests/tst_model.qml
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests -o -,txt
 bash -n webcamctl
 ```
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [CHANGELOG.md](CHANGELOG.md) for release history. Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## Security
 
