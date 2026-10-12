@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Most problems depend on what the camera driver reports, so the device details below help a lot.
+        For security issues, use [private vulnerability reporting](https://github.com/kristoferlund/omarchy-webcam/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem, what you expected instead, and the steps to reproduce it.
+    validations:
+      required: true
+  - type: input
+    id: camera
+    attributes:
+      label: Camera
+      description: Make and model, plus how it is connected (USB, built-in, capture card).
+      placeholder: Logitech C920, USB
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Plugin version (from manifest.json), Omarchy version, and Qt version (`pacman -Q qt6-base`).
+      placeholder: Plugin 0.1.1, Omarchy 4.1, Qt 6.12.0
+    validations:
+      required: true
+  - type: textarea
+    id: webcamctl-state
+    attributes:
+      label: webcamctl output
+      description: Run `./webcamctl devices` and `./webcamctl state /dev/videoN` from the plugin directory and paste the output.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Shell logs or screenshots
+      description: Any QML warnings from omarchy-shell, or a screenshot of the panel.

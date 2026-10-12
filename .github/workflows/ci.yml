@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed git jq shellcheck qt6-declarative
+
+      - uses: actions/checkout@v7
+
+      - name: Check manifest
+        run: |
+          jq -e '.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")' manifest.json
+          for file in $(jq -r '.entryPoints[]' manifest.json); do
+            test -f "$file" || { echo "Missing entry point: $file"; exit 1; }
+          done
+
+      - name: Check webcamctl
+        run: |
+          bash -n webcamctl
+          shellcheck webcamctl
+
+      - name: Run model tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /usr/lib/qt6/bin/qmltestrunner -input tests -o -,txt
