@@ -3,6 +3,7 @@ import QtTest 1.3
 import "../Model.js" as Model
 
 TestCase {
+  id: testCase
   name: "WebcamControlsModel"
 
   readonly property string sampleDevices: [
@@ -307,6 +308,55 @@ TestCase {
     compare(options[4].value, "1280x720")
     compare(options[5].value, "640x480")
     compare(options.length, 6)
+  }
+
+  // QCamera::setCameraDevice in Qt 6.11 emits cameraDeviceChanged and then
+  // clears cameraFormat, in that order.
+  Component {
+    id: fakeCamera
+    QtObject {
+      property var cameraDevice: null
+      property var cameraFormat: null
+      function setDevice(device) {
+        cameraDevice = device
+        cameraFormat = null
+      }
+    }
+  }
+
+  function test_apply_format_writes_only_when_the_format_differs() {
+    var camera = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    var want = Model.pickFormat(captureCardFormats, "")
+    verify(Model.applyFormat(camera, want))
+    compare(Model.formatKey(camera.cameraFormat), "1920x1080")
+    verify(!Model.applyFormat(camera, want))
+    camera.cameraFormat = null
+    verify(Model.applyFormat(camera, want))
+    verify(!Model.applyFormat(camera, null))
+    camera.destroy()
+  }
+
+  function test_device_switch_reapplies_the_format_after_qt_clears_it() {
+    var want = Model.pickFormat(captureCardFormats, "")
+    var synchronous = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    var deferred = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    synchronous.cameraDeviceChanged.connect(function() { Model.applyFormat(synchronous, want) })
+    deferred.cameraDeviceChanged.connect(function() {
+      Qt.callLater(function() { Model.applyFormat(deferred, want) })
+    })
+    Model.applyFormat(synchronous, want)
+    Model.applyFormat(deferred, want)
+
+    synchronous.setDevice("second")
+    deferred.setDevice("second")
+    // The write made inside the signal is erased by the reset that follows it,
+    // whether it happened or was skipped as already current.
+    compare(synchronous.cameraFormat, null)
+    compare(deferred.cameraFormat, null)
+    tryVerify(function() { return Model.formatKey(deferred.cameraFormat) === "1920x1080" })
+    compare(synchronous.cameraFormat, null)
+    synchronous.destroy()
+    deferred.destroy()
   }
 
   function test_resolution_options_for_a_deviceless_panel() {

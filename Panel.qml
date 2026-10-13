@@ -524,15 +524,17 @@ Panel {
 
       // Qt drops cameraFormat both when cameraDevice changes and when the camera
       // is activated, so it cannot be bound -- it has to be re-applied after
-      // each of those. Skipping a redundant assignment keeps activation from
-      // chasing its own tail.
+      // each of those. QCamera::setCameraDevice (Qt 6.11) emits
+      // cameraDeviceChanged and only then clears the format, so a handler that
+      // writes it synchronously is undone, and when the new device picks the
+      // same size the old format still looks current and the write is skipped.
+      // Every re-application therefore waits for the event loop, after the
+      // setter has returned. The panel may have closed by then.
       function applyFormat() {
-        var want = root.previewFormat
-        if (!camera.cameraDevice || !want) return
-        var current = camera.cameraFormat
-        if (current && current.resolution.width === want.resolution.width
-            && current.resolution.height === want.resolution.height) return
-        camera.cameraFormat = want
+        Qt.callLater(function() {
+          if (!previewHost || !camera) return
+          Model.applyFormat(camera, root.previewFormat)
+        })
       }
 
       Component.onCompleted: previewHost.applyFormat()
@@ -543,12 +545,8 @@ Panel {
         id: camera
         cameraDevice: previewHost.matchedDevice
         active: previewHost.matchedDevice !== null
-        // Setting cameraDevice resets cameraFormat inside Qt, so the format has
-        // to be re-applied afterwards rather than bound. A binding only re-fires
-        // when its value differs, and leaving a device and returning to it can
-        // yield an equal format -- the reset then stands, and the preview drops
-        // back to the driver's first mode with the panel still showing the size
-        // the user picked.
+        // Switching device in place -- the saved device changed while the panel
+        // was open -- keeps the V4L2 backend active, so this is the only hook.
         onCameraDeviceChanged: previewHost.applyFormat()
         onActiveChanged: if (camera.active) previewHost.applyFormat()
         onErrorOccurred: function(error, errorString) { previewHost.cameraError = errorString }

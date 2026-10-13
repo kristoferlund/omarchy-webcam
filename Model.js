@@ -519,6 +519,22 @@ function pickFormat(formats, requested) {
   return best !== null ? best : smallestFormat(formats)
 }
 
+// Qt clears cameraFormat after it emits cameraDeviceChanged, and again when
+// the camera activates, so the format cannot be bound: it is written back
+// afterwards, and only when it differs, so activation does not chase its own
+// tail. A cleared format has no size and never matches.
+function formatMatches(current, want) {
+  var key = formatKey(current)
+  return key !== "" && key === formatKey(want)
+}
+
+function applyFormat(camera, want) {
+  if (!camera || !camera.cameraDevice || !want) return false
+  if (formatMatches(camera.cameraFormat, want)) return false
+  camera.cameraFormat = want
+  return true
+}
+
 // Distinct sizes, largest first, with automatic offered ahead of them. A capture
 // card exposes no V4L2 controls at all, so without this the panel has nothing to
 // show for one beyond an apology.
