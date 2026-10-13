@@ -434,7 +434,10 @@ Panel {
           Dropdown {
             width: parent.width
             showLabel: false
-            value: root.previewResolution
+            // The shell's Dropdown writes its own value on selection, which
+            // discards a binding declared on the property; this one survives,
+            // so the size cleared by a device switch shows as Automatic.
+            Binding on value { value: root.previewResolution }
             options: root.resolutionChoices
             foreground: root.contentForeground
             fontFamily: root.contentFontFamily

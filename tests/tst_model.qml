@@ -359,6 +359,31 @@ TestCase {
     deferred.destroy()
   }
 
+  // The shell's Ui/Dropdown assigns its own value before emitting changed,
+  // which removes a binding declared on that property.
+  QtObject { id: savedSettings; property string resolution: "" }
+  QtObject {
+    id: boundDropdown
+    property string value: ""
+    function select(choice) { value = choice }
+  }
+  Binding { target: boundDropdown; property: "value"; value: savedSettings.resolution }
+  QtObject {
+    id: declaredDropdown
+    property string value: savedSettings.resolution
+    function select(choice) { value = choice }
+  }
+
+  function test_resolution_dropdown_shows_automatic_after_a_device_switch() {
+    savedSettings.resolution = ""
+    boundDropdown.select("1280x720")
+    declaredDropdown.select("1280x720")
+    savedSettings.resolution = "1280x720"
+    savedSettings.resolution = ""
+    compare(boundDropdown.value, "")
+    compare(declaredDropdown.value, "1280x720")
+  }
+
   function test_resolution_options_for_a_deviceless_panel() {
     var options = Model.resolutionOptions([])
     compare(options.length, 1)
