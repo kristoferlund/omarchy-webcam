@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- A preview resolution picker in the panel, listing the sizes the device offers behind an Automatic default. The choice is saved as `resolution` and cleared when the capture device changes. ([#3](https://github.com/kristoferlund/omarchy-webcam/pull/3))
+
+### Fixed
+
+- The preview asks a capture card for a mode it can deliver. `Camera.cameraFormat` was never set, so Qt took the driver's first mode, and a RODE Streamer X fed 1080p lists 3840x2160 first and answers with its own "format not supported" card. The preview now picks the largest mode at or below 1920x1080 and applies it again after Qt clears it on activation and on a device switch. ([#3](https://github.com/kristoferlund/omarchy-webcam/pull/3))
+- A capture card that reports no V4L2 controls shows a plain notice instead of an error. ([#3](https://github.com/kristoferlund/omarchy-webcam/pull/3))
+
 ## [0.1.1] - 2026-10-12
 
 ### Fixed
