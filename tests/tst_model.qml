@@ -3,6 +3,7 @@ import QtTest 1.3
 import "../Model.js" as Model
 
 TestCase {
+  id: testCase
   name: "WebcamControlsModel"
 
   readonly property string sampleDevices: [
@@ -241,5 +242,151 @@ TestCase {
     compare(Model.control(updated, "exposure_time_absolute").value, 333)
     compare(Model.valueLabel(Model.control(updated, "exposure_time_absolute")), "33.3 ms")
     compare(Model.control(controls, "exposure_time_absolute").value, 200)
+  }
+
+  // Mirrors a RODE Streamer X: the largest mode is advertised first, and the
+  // card cannot upscale a 1080p input to fill it.
+  readonly property var captureCardFormats: [
+    { resolution: { width: 3840, height: 2160 }, minFrameRate: 30, maxFrameRate: 30 },
+    { resolution: { width: 2560, height: 1440 }, minFrameRate: 60, maxFrameRate: 60 },
+    { resolution: { width: 1920, height: 1080 }, minFrameRate: 60, maxFrameRate: 120 },
+    { resolution: { width: 1280, height: 720 }, minFrameRate: 60, maxFrameRate: 60 },
+    { resolution: { width: 1920, height: 1080 }, minFrameRate: 30, maxFrameRate: 30 },
+    { resolution: { width: 640, height: 480 }, minFrameRate: 60, maxFrameRate: 60 }
+  ]
+
+  function test_pick_format_prefers_largest_within_cap() {
+    var picked = Model.pickFormat(captureCardFormats, "")
+    compare(picked.resolution.width, 1920)
+    compare(picked.resolution.height, 1080)
+    // 1080p appears twice; the faster one wins.
+    compare(picked.maxFrameRate, 120)
+  }
+
+  function test_pick_format_honours_an_explicit_request() {
+    var picked = Model.pickFormat(captureCardFormats, "1280x720")
+    compare(picked.resolution.width, 1280)
+    compare(picked.resolution.height, 720)
+  }
+
+  function test_pick_format_falls_back_when_the_request_is_gone() {
+    // A resolution saved against a previous device must not blank the preview.
+    var picked = Model.pickFormat(captureCardFormats, "1024x768")
+    compare(picked.resolution.width, 1920)
+  }
+
+  function test_pick_format_uses_smallest_when_all_exceed_the_cap() {
+    var onlyLarge = [
+      { resolution: { width: 4096, height: 2160 }, minFrameRate: 24, maxFrameRate: 24 },
+      { resolution: { width: 3840, height: 2160 }, minFrameRate: 30, maxFrameRate: 30 }
+    ]
+    var picked = Model.pickFormat(onlyLarge, "")
+    compare(picked.resolution.width, 3840)
+  }
+
+  function test_pick_format_ignores_unusable_entries() {
+    var noisy = [
+      { resolution: { width: 0, height: 0 }, maxFrameRate: 60 },
+      { resolution: { width: -1, height: -1 }, maxFrameRate: 60 },
+      { resolution: { width: 1280, height: 720 }, maxFrameRate: 30 }
+    ]
+    var picked = Model.pickFormat(noisy, "")
+    compare(picked.resolution.width, 1280)
+  }
+
+  function test_pick_format_survives_an_empty_list() {
+    compare(Model.pickFormat([], ""), null)
+    compare(Model.pickFormat(null, ""), null)
+  }
+
+  function test_resolution_options_are_deduped_and_ordered() {
+    var options = Model.resolutionOptions(captureCardFormats)
+    compare(options[0].value, "")            // automatic first
+    compare(options[1].value, "3840x2160")   // then largest to smallest
+    compare(options[2].value, "2560x1440")
+    compare(options[3].value, "1920x1080")   // listed twice, offered once
+    compare(options[4].value, "1280x720")
+    compare(options[5].value, "640x480")
+    compare(options.length, 6)
+  }
+
+  // QCamera::setCameraDevice in Qt 6.11 emits cameraDeviceChanged and then
+  // clears cameraFormat, in that order.
+  Component {
+    id: fakeCamera
+    QtObject {
+      property var cameraDevice: null
+      property var cameraFormat: null
+      function setDevice(device) {
+        cameraDevice = device
+        cameraFormat = null
+      }
+    }
+  }
+
+  function test_apply_format_writes_only_when_the_format_differs() {
+    var camera = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    var want = Model.pickFormat(captureCardFormats, "")
+    verify(Model.applyFormat(camera, want))
+    compare(Model.formatKey(camera.cameraFormat), "1920x1080")
+    verify(!Model.applyFormat(camera, want))
+    camera.cameraFormat = null
+    verify(Model.applyFormat(camera, want))
+    verify(!Model.applyFormat(camera, null))
+    camera.destroy()
+  }
+
+  function test_device_switch_reapplies_the_format_after_qt_clears_it() {
+    var want = Model.pickFormat(captureCardFormats, "")
+    var synchronous = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    var deferred = fakeCamera.createObject(testCase, { cameraDevice: "first" })
+    synchronous.cameraDeviceChanged.connect(function() { Model.applyFormat(synchronous, want) })
+    deferred.cameraDeviceChanged.connect(function() {
+      Qt.callLater(function() { Model.applyFormat(deferred, want) })
+    })
+    Model.applyFormat(synchronous, want)
+    Model.applyFormat(deferred, want)
+
+    synchronous.setDevice("second")
+    deferred.setDevice("second")
+    // The write made inside the signal is erased by the reset that follows it,
+    // whether it happened or was skipped as already current.
+    compare(synchronous.cameraFormat, null)
+    compare(deferred.cameraFormat, null)
+    tryVerify(function() { return Model.formatKey(deferred.cameraFormat) === "1920x1080" })
+    compare(synchronous.cameraFormat, null)
+    synchronous.destroy()
+    deferred.destroy()
+  }
+
+  // The shell's Ui/Dropdown assigns its own value before emitting changed,
+  // which removes a binding declared on that property.
+  QtObject { id: savedSettings; property string resolution: "" }
+  QtObject {
+    id: boundDropdown
+    property string value: ""
+    function select(choice) { value = choice }
+  }
+  Binding { target: boundDropdown; property: "value"; value: savedSettings.resolution }
+  QtObject {
+    id: declaredDropdown
+    property string value: savedSettings.resolution
+    function select(choice) { value = choice }
+  }
+
+  function test_resolution_dropdown_shows_automatic_after_a_device_switch() {
+    savedSettings.resolution = ""
+    boundDropdown.select("1280x720")
+    declaredDropdown.select("1280x720")
+    savedSettings.resolution = "1280x720"
+    savedSettings.resolution = ""
+    compare(boundDropdown.value, "")
+    compare(declaredDropdown.value, "1280x720")
+  }
+
+  function test_resolution_options_for_a_deviceless_panel() {
+    var options = Model.resolutionOptions([])
+    compare(options.length, 1)
+    compare(options[0].value, "")
   }
 }

@@ -26,6 +26,7 @@ Panel {
   property bool menuOpen: false
   property bool refreshPending: false
   property string lastError: ""
+  property string lastNotice: ""
   property var writeQueue: []
   property var activeWrite: null
 
@@ -38,6 +39,22 @@ Panel {
     String(Qt.resolvedUrl("webcamctl")).replace(/^file:\/\//, ""))
   readonly property color contentForeground: root.bar ? root.bar.foreground : Commons.Color.foreground
   readonly property string contentFontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+
+  // One MediaDevices for the whole panel: the preview needs the matched
+  // CameraDevice, and so does anything that asks which formats it offers.
+  MediaDevices { id: mediaDevices }
+
+  readonly property var previewDevice: {
+    var inputs = mediaDevices.videoInputs
+    for (var i = 0; i < inputs.length; i++) {
+      if (String(inputs[i].id) === root.device) return inputs[i]
+    }
+    return null
+  }
+  readonly property var previewFormats: root.previewDevice ? root.previewDevice.videoFormats : []
+  readonly property string previewResolution: String(setting("resolution", "") || "").trim()
+  readonly property var previewFormat: Model.pickFormat(root.previewFormats, root.previewResolution)
+  readonly property var resolutionChoices: Model.resolutionOptions(root.previewFormats)
 
   function open() {
     root.refresh()
@@ -69,6 +86,10 @@ Panel {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
+  function selectResolution(value) {
+    root.persistSettings({ resolution: String(value || "") })
+  }
+
   function selectDevice(value) {
     var selected = String(value || "")
     if (selected !== "" && !/^\/dev\/video\d+$/.test(selected)) return
@@ -78,7 +99,8 @@ Panel {
     root.controls = []
     root.writeQueue = []
     root.lastError = ""
-    root.persistSettings({ device: selected })
+    root.lastNotice = ""
+    root.persistSettings({ device: selected, resolution: "" })
     root.refreshState()
   }
 
@@ -100,6 +122,7 @@ Panel {
     }
     root.loading = true
     root.lastError = ""
+    root.lastNotice = ""
     root.stateRequestDevice = root.targetDevice
     stateProc.command = ["bash", root.helperPath, "state", root.stateRequestDevice]
     stateProc.running = true
@@ -111,8 +134,11 @@ Panel {
     root.device = state.device
     root.deviceName = state.deviceName || state.device || "Webcam"
     root.controls = state.controls
-    if (root.connected && root.controls.length === 0)
-      root.lastError = "This capture node did not report any V4L2 controls. The preview may still be available."
+    // Capture cards expose no controls at all -- that is the hardware being a
+    // capture card, not a failure, so it must not read as an error.
+    root.lastNotice = (root.connected && root.controls.length === 0)
+      ? "This device reports no V4L2 controls, which is normal for a capture card. Preview and resolution still work."
+      : ""
   }
 
   function updateValue(name, value) {
@@ -142,6 +168,7 @@ Panel {
     root.activeWrite = nextQueue.shift()
     root.writeQueue = nextQueue
     root.lastError = ""
+    root.lastNotice = ""
     writeProc.command = [
       "bash", root.helperPath, "set", root.device,
       root.activeWrite.name, root.activeWrite.value
@@ -388,6 +415,36 @@ Panel {
             onChanged: function(value) { root.selectDevice(value) }
           }
         }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(4)
+          visible: root.resolutionChoices.length > 1
+
+          Text {
+            text: "PREVIEW RESOLUTION"
+            color: Qt.darker(root.contentForeground, 1.4)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 0.8
+            textFormat: Text.PlainText
+          }
+
+          Dropdown {
+            width: parent.width
+            showLabel: false
+            // The shell's Dropdown writes its own value on selection, which
+            // discards a binding declared on the property; this one survives,
+            // so the size cleared by a device switch shows as Automatic.
+            Binding on value { value: root.previewResolution }
+            options: root.resolutionChoices
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onPopupOpenChanged: root.menuOpen = popupOpen
+            onChanged: function(value) { root.selectResolution(value) }
+          }
+        }
       }
 
       ScrollView {
@@ -412,6 +469,17 @@ Panel {
           // Keep transient scrollbars out of right-aligned values and reset targets.
           width: Math.max(1, controlsScroll.availableWidth - Style.space(14))
           spacing: Style.space(8)
+
+          Text {
+            visible: root.lastNotice !== "" && root.lastError === ""
+            width: parent.width
+            text: root.lastNotice
+            color: Qt.darker(root.contentForeground, 1.4)
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+          }
 
           Text {
             visible: root.lastError !== ""
@@ -455,22 +523,42 @@ Panel {
     Item {
       id: previewHost
       property string cameraError: ""
-      readonly property var matchedDevice: {
-        var inputs = mediaDevices.videoInputs
-        for (var i = 0; i < inputs.length; i++) {
-          if (String(inputs[i].id) === root.device) return inputs[i]
-        }
-        return null
+      readonly property var matchedDevice: root.previewDevice
+
+      // Qt drops cameraFormat both when cameraDevice changes and when the camera
+      // is activated, so it cannot be bound -- it has to be re-applied after
+      // each of those. QCamera::setCameraDevice (Qt 6.11) emits
+      // cameraDeviceChanged and only then clears the format, so a handler that
+      // writes it synchronously is undone, and when the new device picks the
+      // same size the old format still looks current and the write is skipped.
+      // Every re-application therefore waits for the event loop, after the
+      // setter has returned. The panel may have closed by then.
+      function applyFormat() {
+        Qt.callLater(function() {
+          if (!previewHost || !camera) return
+          Model.applyFormat(camera, root.previewFormat)
+        })
       }
+
+      Component.onCompleted: previewHost.applyFormat()
       readonly property string stateLabel: matchedDevice === null ? "UNAVAILABLE"
         : (camera.error !== Camera.NoError ? "IN USE / ERROR" : "LIVE")
 
-      MediaDevices { id: mediaDevices }
       Camera {
         id: camera
         cameraDevice: previewHost.matchedDevice
         active: previewHost.matchedDevice !== null
+        // Switching device in place -- the saved device changed while the panel
+        // was open -- keeps the V4L2 backend active, so this is the only hook.
+        onCameraDeviceChanged: previewHost.applyFormat()
+        onActiveChanged: if (camera.active) previewHost.applyFormat()
         onErrorOccurred: function(error, errorString) { previewHost.cameraError = errorString }
+      }
+
+      // Re-apply when the choice changes but the device does not.
+      Connections {
+        target: root
+        function onPreviewFormatChanged() { previewHost.applyFormat() }
       }
       CaptureSession { camera: camera; videoOutput: videoOutput }
       VideoOutput {
