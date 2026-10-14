@@ -6,9 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-14
+
 ### Added
 
-- A preview resolution picker in the panel, listing the sizes the device offers behind an Automatic default. The choice is saved as `resolution` and cleared when the capture device changes. ([#3](https://github.com/kristoferlund/omarchy-webcam/pull/3))
+- A preview resolution picker in the panel, listing the sizes the device offers behind an Automatic default. The choice is saved as `resolution` and cleared when the capture device changes. ([#3](https://github.com/kristoferlund/omarchy-webcam/pull/3), thanks [@riclib](https://github.com/riclib))
 
 ### Fixed
 
@@ -36,6 +38,7 @@ Initial release.
 - `webcamctl` helper that restricts device arguments to `/dev/videoN` and validates control names and values before calling `v4l2-ctl`.
 - Device names and menu labels are sanitized before they are rendered.
 
-[Unreleased]: https://github.com/kristoferlund/omarchy-webcam/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kristoferlund/omarchy-webcam/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kristoferlund/omarchy-webcam/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kristoferlund/omarchy-webcam/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kristoferlund/omarchy-webcam/releases/tag/v0.1.0
